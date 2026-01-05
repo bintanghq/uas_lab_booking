@@ -1,0 +1,102 @@
+CREATE DATABASE IF NOT EXISTS db_peminjaman_ruangan
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE db_peminjaman_ruangan;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(120) NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('ADMIN','DOSEN','MAHASISWA') NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(20) NOT NULL UNIQUE,
+  name VARCHAR(120) NOT NULL,
+  type ENUM('LAB','KELAS','AULA') NOT NULL,
+  location VARCHAR(120) NULL,
+  capacity INT NOT NULL DEFAULT 0,
+  facilities TEXT NULL,
+  photo_url VARCHAR(255) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS fixed_schedules (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  room_id INT NOT NULL,
+  schedule_set ENUM('A','B') NOT NULL,
+  day_of_week TINYINT NOT NULL, -- 1=Senin..7=Minggu
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  course_name VARCHAR(120) NOT NULL,
+  lecturer_name VARCHAR(120) NOT NULL,
+  class_name VARCHAR(60) NULL,
+  note VARCHAR(160) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_fixed_room FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+-- Booking workflow:
+-- PENDING -> (APPROVED) OR (REJECTED) OR (COUNTERED -> user ACCEPT -> APPROVED / user DECLINE -> REJECTED)
+CREATE TABLE IF NOT EXISTS bookings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_code VARCHAR(20) NOT NULL UNIQUE,
+  user_id INT NOT NULL,
+  room_id INT NOT NULL,
+  booking_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  purpose VARCHAR(200) NOT NULL,
+
+  status ENUM('PENDING','COUNTERED','APPROVED','REJECTED','CANCELLED') NOT NULL DEFAULT 'PENDING',
+
+  -- admin counter-proposal
+  proposed_date DATE NULL,
+  proposed_start_time TIME NULL,
+  proposed_end_time TIME NULL,
+  proposed_note TEXT NULL,
+
+  requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  admin_id INT NULL,
+  admin_note TEXT NULL,
+  admin_action_at TIMESTAMP NULL,   -- waktu admin propose/reject/approve
+
+  decision_at TIMESTAMP NULL,       -- waktu final: approved/rejected
+  user_note TEXT NULL,
+  user_decision_at TIMESTAMP NULL,  -- waktu user accept/decline perubahan
+
+  CONSTRAINT fk_booking_user FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_booking_room FOREIGN KEY (room_id) REFERENCES rooms(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_booking_admin FOREIGN KEY (admin_id) REFERENCES users(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS letters (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id INT NOT NULL UNIQUE,
+  letter_number VARCHAR(50) NOT NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_letter_booking FOREIGN KEY (booking_id) REFERENCES bookings(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  type ENUM('INFO','CHANGE_PROPOSED','APPROVED','REJECTED','USER_RESPONSE') NOT NULL DEFAULT 'INFO',
+  title VARCHAR(140) NOT NULL,
+  message TEXT NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
